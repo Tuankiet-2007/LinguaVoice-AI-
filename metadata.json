@@ -1,0 +1,5 @@
+{
+  "name": "LinguaVoice AI",
+  "description": "A high-fidelity text-to-speech application with dual-language subtitles (English/Vietnamese). Features a professional-grade custom audio player with precision seeking, powered by Gemini 2.5 Flash for translation and synthesis.",
+  "requestFramePermissions": []
+}

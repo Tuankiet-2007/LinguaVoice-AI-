@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinguaVoice AI - Python Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        body { background-color: #f8fafc; }
+        /* Custom scrollbar */
+        textarea::-webkit-scrollbar, .subtitle-scroll::-webkit-scrollbar { width: 8px; }
+        textarea::-webkit-scrollbar-track, .subtitle-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
+        textarea::-webkit-scrollbar-thumb, .subtitle-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        textarea::-webkit-scrollbar-thumb:hover, .subtitle-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Seek Bar Styles */
+        .seek-bar-container { position: relative; width: 100%; height: 32px; display: flex; align-items: center; cursor: pointer; user-select: none; touch-action: none; }
+        .seek-track { width: 100%; height: 6px; background-color: #e2e8f0; border-radius: 9999px; overflow: hidden; pointer-events: none; }
+        .seek-fill { height: 100%; background-color: #0ea5e9; width: 0%; transition: width 0.1s linear; }
+        .seek-thumb { position: absolute; height: 16px; width: 16px; background-color: white; border: 2px solid #0284c7; border-radius: 50%; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); left: 0%; transform: translateX(-50%); transition: left 0.1s linear, transform 0.1s; pointer-events: none; z-index: 20; }
+        .seek-bar-container:hover .seek-thumb { transform: translateX(-50%) scale(1.2); }
+        .seek-tooltip { position: absolute; top: -35px; background-color: #0f172a; color: white; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; transform: translateX(-50%); pointer-events: none; opacity: 0; transition: opacity 0.1s; white-space: nowrap; z-index: 30; }
+        
+        /* Remove transitions when dragging */
+        .dragging .seek-fill, .dragging .seek-thumb { transition: none !important; }
+
+        /* Active Subtitle Animation */
+        .subtitle-item.active {
+            opacity: 1;
+            transform: scale(1.02);
+            background-color: #f0f9ff;
+            border-left: 4px solid #0ea5e9;
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+        .subtitle-item {
+            opacity: 0.6;
+            transition: all 0.3s ease;
+            padding: 0 1rem;
+            border-left: 4px solid transparent;
+        }
+    </style>
+</head>
+<body class="text-slate-900 font-sans pb-12">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="bg-brand-500 p-2 rounded-lg text-white">
+                    <i data-lucide="languages"></i>
+                </div>
+                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand-600 to-indigo-600">
+                    LinguaVoice AI
+                </h1>
+            </div>
+            <div class="text-sm text-gray-500">Python + Edge TTS</div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        <!-- Left Column: Controls -->
+        <div class="space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <!-- Language & Input -->
+                <div class="flex items-center justify-between mb-4">
+                    <label class="text-sm font-semibold text-gray-700">Source Text</label>
+                    <div class="flex bg-gray-100 rounded-lg p-1 text-xs font-medium">
+                        <button id="btn-lang-en" class="px-3 py-1 rounded-md transition-colors bg-white text-brand-600 shadow-sm" onclick="setLanguage('English')">English</button>
+                        <button id="btn-lang-vi" class="px-3 py-1 rounded-md transition-colors text-gray-500" onclick="setLanguage('Vietnamese')">Vietnamese</button>
+                    </div>
+                </div>
+
+                <textarea id="input-text" class="w-full h-48 p-4 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none resize-none transition-all text-gray-700 leading-relaxed" placeholder="Enter English text here to convert to speech..."></textarea>
+
+                <!-- Voice Selection & Generate -->
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Voice Model</label>
+                        <div class="relative">
+                            <select id="voice-select" class="w-full appearance-none bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-3 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent">
+                                <!-- Populated by JS -->
+                            </select>
+                            <i data-lucide="mic" class="absolute right-3 top-3 text-gray-400 pointer-events-none w-4 h-4"></i>
+                        </div>
+                    </div>
+
+                    <div class="flex items-end">
+                        <button id="btn-generate" onclick="generateAudio()" class="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-medium text-white bg-gradient-to-r from-brand-500 to-indigo-600 hover:from-brand-600 hover:to-indigo-700 transform active:scale-95 transition-all shadow-lg shadow-brand-500/30">
+                            <i data-lucide="wand-2" class="w-4 h-4"></i>
+                            <span>Generate Audio</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio Player -->
+            <div id="player-card" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 opacity-50 pointer-events-none transition-opacity duration-500">
+                
+                <!-- Seek Bar -->
+                <div class="mb-4">
+                    <div id="seek-bar" class="seek-bar-container group">
+                        <div class="absolute inset-0 z-10"></div> <!-- Hitbox -->
+                        <div class="seek-track">
+                            <div id="seek-fill" class="seek-fill"></div>
+                        </div>
+                        <div id="seek-thumb" class="seek-thumb"></div>
+                        <div id="seek-tooltip" class="seek-tooltip">00:00</div>
+                    </div>
+                </div>
+
+                <!-- Controls Row -->
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                    
+                    <!-- Left: Transport -->
+                    <div class="flex items-center gap-3 order-1">
+                        <button onclick="togglePlay()" id="btn-play-pause" class="w-10 h-10 bg-brand-600 text-white rounded-full flex items-center justify-center shadow-lg shadow-brand-600/30 hover:bg-brand-700 active:scale-95 transition-all">
+                            <i data-lucide="play" class="w-5 h-5 ml-0.5"></i>
+                        </button>
+                        <button onclick="skipBack()" id="btn-rewind" class="p-2 text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded-full transition-all" title="Rewind">
+                            <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+                        </button>
+                        <button onclick="skipForward()" id="btn-forward" class="p-2 text-gray-500 hover:text-brand-600 hover:bg-brand-50 rounded-full transition-all" title="Forward">
+                            <i data-lucide="rotate-cw" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+
+                    <!-- Center: Time -->
+                    <div class="text-sm font-medium text-gray-500 font-mono order-3 md:order-2 w-full md:w-auto text-center">
+                        <span id="time-current">00:00</span> / <span id="time-duration">00:00</span>
+                    </div>
+
+                    <!-- Right: Settings -->
+                    <div class="flex items-center gap-3 order-2 md:order-3">
+                        <!-- Seek Step -->
+                        <select id="seek-step" class="bg-gray-50 border border-gray-200 text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-500 text-gray-600 cursor-pointer hover:bg-white" onchange="updateTooltips()">
+                            <option value="5">5s</option>
+                            <option value="10">10s</option>
+                            <option value="15">15s</option>
+                            <option value="30">30s</option>
+                        </select>
+
+                        <!-- Speed -->
+                        <select id="playback-rate" onchange="setPlaybackRate()" class="bg-gray-50 border border-gray-200 text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-brand-500 text-gray-600 cursor-pointer hover:bg-white">
+                            <option value="0.5">0.5x</option>
+                            <option value="0.75">0.75x</option>
+                            <option value="1.0" selected>1.0x</option>
+                            <option value="1.25">1.25x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="2.0">2.0x</option>
+                        </select>
+
+                        <!-- Volume -->
+                        <div class="flex items-center gap-1 group">
+                            <i data-lucide="volume-2" class="w-4 h-4 text-gray-400"></i>
+                            <input id="volume-slider" type="range" min="0" max="1" step="0.05" value="1" oninput="setVolume()" class="w-16 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-brand-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-gray-100 flex justify-center">
+                    <a id="download-link" href="#" download="linguavoice.mp3" class="flex items-center gap-2 text-sm text-gray-500 hover:text-brand-600 transition-colors">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Download MP3</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Subtitles -->
+        <div class="h-full flex flex-col">
+            <div class="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[500px]">
+                <div class="p-4 bg-gray-50 border-b border-gray-200">
+                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider">Subtitles</h3>
+                </div>
+                <div id="subtitle-container" class="subtitle-scroll flex-1 overflow-y-auto p-6 space-y-4 relative scroll-smooth">
+                    <div class="h-full flex items-center justify-center text-gray-400 italic">
+                        Subtitles will appear here after generation...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- App Logic -->
+    <script>
+        // --- Configuration & State ---
+        const VOICES = {
+            'English': [
+                { id: 'en-US-AriaNeural', name: 'Aria (Female)' },
+                { id: 'en-US-GuyNeural', name: 'Guy (Male)' },
+                { id: 'en-US-ChristopherNeural', name: 'Christopher (Male)' },
+                { id: 'en-US-JennyNeural', name: 'Jenny (Female)' }
+            ],
+            'Vietnamese': [
+                { id: 'vi-VN-HoaiMyNeural', name: 'Hoai My (Female)' },
+                { id: 'vi-VN-NamMinhNeural', name: 'Nam Minh (Male)' }
+            ]
+        };
+
+        let state = {
+            language: 'English',
+            isPlaying: false,
+            isDragging: false,
+            duration: 0,
+            segments: [],
+            audio: new Audio()
+        };
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            populateVoices();
+            setupPlayerEvents();
+            updateTooltips();
+        });
+
+        function setLanguage(lang) {
+            state.language = lang;
+            
+            // Update UI Buttons
+            const btnEn = document.getElementById('btn-lang-en');
+            const btnVi = document.getElementById('btn-lang-vi');
+            const input = document.getElementById('input-text');
+            
+            if (lang === 'English') {
+                btnEn.className = "px-3 py-1 rounded-md transition-colors bg-white text-brand-600 shadow-sm";
+                btnVi.className = "px-3 py-1 rounded-md transition-colors text-gray-500";
+                input.placeholder = "Enter English text here...";
+            } else {
+                btnVi.className = "px-3 py-1 rounded-md transition-colors bg-white text-brand-600 shadow-sm";
+                btnEn.className = "px-3 py-1 rounded-md transition-colors text-gray-500";
+                input.placeholder = "Nhập văn bản tiếng Việt...";
+            }
+            populateVoices();
+        }
+
+        function populateVoices() {
+            const select = document.getElementById('voice-select');
+            select.innerHTML = '';
+            VOICES[state.language].forEach(voice => {
+                const opt = document.createElement('option');
+                opt.value = voice.id;
+                opt.textContent = voice.name;
+                select.appendChild(opt);
+            });
+        }
+
+        // --- API Interaction ---
+        async function generateAudio() {
+            const text = document.getElementById('input-text').value;
+            const voice = document.getElementById('voice-select').value;
+            const btn = document.getElementById('btn-generate');
+            
+            if (!text.trim()) return;
+
+            // Loading State
+            btn.disabled = true;
+            btn.innerHTML = `<div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span>Processing...</span>`;
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: text,
+                        language: state.language,
+                        voice: voice
+                    })
+                });
+
+                if (!response.ok) throw new Error('Generation failed');
+                
+                const data = await response.json();
+                
+                // Load Audio
+                const audioBlob = base64ToBlob(data.audioBase64, 'audio/mp3');
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                state.audio.src = audioUrl;
+                state.audio.load();
+                
+                // Setup Subtitles (Store raw, align later on metadata loaded)
+                state.segments = data.segments;
+                
+                // Update Download Link
+                const dlLink = document.getElementById('download-link');
+                dlLink.href = audioUrl;
+
+                // Enable Player UI
+                document.getElementById('player-card').classList.remove('opacity-50', 'pointer-events-none');
+                document.getElementById('player-card').classList.add('opacity-100');
+                
+                // Reset View
+                renderSubtitles();
+
+            } catch (err) {
+                console.error(err);
+                alert('Error generating audio. Please check console.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="wand-2" class="w-4 h-4"></i><span>Generate Audio</span>`;
+                lucide.createIcons();
+            }
+        }
+
+        function base64ToBlob(base64, type) {
+            const binStr = atob(base64);
+            const len = binStr.length;
+            const arr = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                arr[i] = binStr.charCodeAt(i);
+            }
+            return new Blob([arr], { type: type });
+        }
+
+        // --- Subtitle Logic ---
+        function alignSegments(duration) {
+            // Estimate timestamps based on character length relative to total duration
+            const totalChars = state.segments.reduce((acc, seg) => acc + seg.original.length, 0);
+            let currentTime = 0;
+            
+            state.segments = state.segments.map(seg => {
+                const segDuration = (seg.original.length / totalChars) * duration;
+                const aligned = { ...seg, startTime: currentTime, endTime: currentTime + segDuration };
+                currentTime += segDuration;
+                return aligned;
+            });
+            renderSubtitles();
+        }
+
+        function renderSubtitles() {
+            const container = document.getElementById('subtitle-container');
+            if (state.segments.length === 0) {
+                container.innerHTML = `<div class="h-full flex items-center justify-center text-gray-400 italic">Subtitles will appear here...</div>`;
+                return;
+            }
+
+            container.innerHTML = state.segments.map((seg, idx) => `
+                <div id="sub-${idx}" class="subtitle-item cursor-pointer" onclick="seekTo(${seg.startTime})">
+                    <p class="text-lg font-medium leading-relaxed text-gray-900">${seg.original}</p>
+                    ${seg.translated ? `<p class="mt-1 text-base text-brand-600">${seg.translated}</p>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function updateActiveSubtitle(currentTime) {
+            const activeIdx = state.segments.findIndex(s => currentTime >= s.startTime && currentTime < s.endTime);
+            
+            // Remove active class from all
+            document.querySelectorAll('.subtitle-item').forEach(el => el.classList.remove('active'));
+            
+            if (activeIdx !== -1) {
+                const el = document.getElementById(`sub-${activeIdx}`);
+                if (el) {
+                    el.classList.add('active');
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }
+        }
+
+        // --- Audio Player Logic ---
+        function setupPlayerEvents() {
+            const audio = state.audio;
+            
+            audio.addEventListener('loadedmetadata', () => {
+                state.duration = audio.duration;
+                document.getElementById('time-duration').textContent = formatTime(state.duration);
+                alignSegments(state.duration); // Align subtitles now that we have duration
+            });
+
+            audio.addEventListener('timeupdate', () => {
+                const current = audio.currentTime;
+                document.getElementById('time-current').textContent = formatTime(current);
+                updateActiveSubtitle(current);
+                
+                if (!state.isDragging) {
+                    const percent = (current / state.duration) * 100;
+                    updateSeekVisuals(percent);
+                }
+            });
+
+            audio.addEventListener('ended', () => {
+                state.isPlaying = false;
+                updatePlayButton();
+            });
+
+            // Seek Bar Interactions
+            const seekBar = document.getElementById('seek-bar');
+            
+            seekBar.addEventListener('mousedown', (e) => {
+                state.isDragging = true;
+                seekBar.classList.add('dragging');
+                handleSeekInput(e);
+                document.addEventListener('mousemove', handleSeekInput);
+                document.addEventListener('mouseup', endSeek);
+            });
+
+            seekBar.addEventListener('mousemove', (e) => {
+                // Hover effect
+                const rect = seekBar.getBoundingClientRect();
+                const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+                const percent = (x / rect.width) * 100;
+                const time = (percent / 100) * state.duration;
+                
+                const tooltip = document.getElementById('seek-tooltip');
+                tooltip.style.left = `${percent}%`;
+                tooltip.style.opacity = 1;
+                tooltip.textContent = formatTime(time);
+            });
+
+            seekBar.addEventListener('mouseleave', () => {
+                document.getElementById('seek-tooltip').style.opacity = 0;
+            });
+        }
+
+        function handleSeekInput(e) {
+            const seekBar = document.getElementById('seek-bar');
+            const rect = seekBar.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const percent = (x / rect.width) * 100;
+            
+            updateSeekVisuals(percent);
+            
+            // If just dragging, don't update audio yet, just visual
+            if (e.type === 'mousedown') {
+                 // instant seek on click
+                 const time = (percent / 100) * state.duration;
+                 state.audio.currentTime = time;
+            }
+        }
+
+        function endSeek(e) {
+            state.isDragging = false;
+            document.getElementById('seek-bar').classList.remove('dragging');
+            document.removeEventListener('mousemove', handleSeekInput);
+            document.removeEventListener('mouseup', endSeek);
+
+            // Commit seek
+            const seekBar = document.getElementById('seek-bar');
+            const rect = seekBar.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const percent = (x / rect.width) * 100;
+            const time = (percent / 100) * state.duration;
+            state.audio.currentTime = time;
+        }
+
+        function updateSeekVisuals(percent) {
+            document.getElementById('seek-fill').style.width = `${percent}%`;
+            document.getElementById('seek-thumb').style.left = `${percent}%`;
+        }
+
+        // --- Controls ---
+        function togglePlay() {
+            if (state.audio.paused) {
+                state.audio.play();
+                state.isPlaying = true;
+            } else {
+                state.audio.pause();
+                state.isPlaying = false;
+            }
+            updatePlayButton();
+        }
+
+        function updatePlayButton() {
+            const btn = document.getElementById('btn-play-pause');
+            if (state.isPlaying) {
+                btn.innerHTML = `<i data-lucide="pause" class="w-5 h-5 fill-current"></i>`;
+            } else {
+                btn.innerHTML = `<i data-lucide="play" class="w-5 h-5 ml-0.5 fill-current"></i>`;
+            }
+            lucide.createIcons();
+        }
+
+        function getSeekStep() {
+            return parseInt(document.getElementById('seek-step').value);
+        }
+
+        function skipForward() {
+            state.audio.currentTime = Math.min(state.audio.currentTime + getSeekStep(), state.duration);
+        }
+
+        function skipBack() {
+            state.audio.currentTime = Math.max(state.audio.currentTime - getSeekStep(), 0);
+        }
+        
+        function seekTo(time) {
+            state.audio.currentTime = time;
+            if(!state.isPlaying) togglePlay();
+        }
+
+        function setPlaybackRate() {
+            state.audio.playbackRate = parseFloat(document.getElementById('playback-rate').value);
+        }
+
+        function setVolume() {
+            state.audio.volume = parseFloat(document.getElementById('volume-slider').value);
+        }
+
+        function updateTooltips() {
+            const step = getSeekStep();
+            document.getElementById('btn-rewind').title = `Rewind ${step}s`;
+            document.getElementById('btn-forward').title = `Forward ${step}s`;
+        }
+
+        // --- Helpers ---
+        function formatTime(seconds) {
+            if (!Number.isFinite(seconds)) return "00:00";
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+    </script>
+</body>
+</html>
